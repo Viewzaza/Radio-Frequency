@@ -18,3 +18,13 @@ Hamlib Auto-Detection:
 - The application now automatically searches for the `hamlib` installation in common directories on startup.
 - If not found, it prompts the user with a file dialog to locate the `hamlib\bin` directory manually.
 - A "Browse" button has been added to the settings for changing the path at any time.
+
+Visual Enhancements:
+- The Azimuth compass and Elevation indicator widgets have been significantly enlarged to improve readability.
+- Font sizes within the visual widgets have been increased.
+- The main window geometry has been adjusted to better accommodate the larger visuals.
+
+Manual Command Prompt:
+- A new "Manual Command" section has been added to the GUI.
+- This allows users to send any raw command string (e.g., "S", "M 180 30") directly to `rotctl` for advanced control.
+- Command output and errors are logged directly to the status area.
