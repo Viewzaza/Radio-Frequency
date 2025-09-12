@@ -129,7 +129,7 @@ class RotorControlGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Rotor Control")
-        self.geometry("950x800")
+        self.geometry("1250x900")
 
         self.rotctld_process = None
         self.config_file = "rotor_config.json"
