@@ -1,16 +1,137 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+
+from tkinter import ttk, messagebox, scrolledtext, filedialog
+
 import subprocess
 import threading
 import time
 import json
 import os
 
+import math
+
+class Compass(tk.Canvas):
+    """A tkinter canvas widget that displays a compass face and a pointer for azimuth."""
+    def __init__(self, parent, size=200, *args, **kwargs):
+        super().__init__(parent, width=size, height=size, *args, **kwargs)
+        self.size = size
+        self.center = size / 2
+        self.radius = size / 2 * 0.9  # Use 90% of radius for the main circle
+        self.pointer = None
+        self.configure(bg='white')
+        self._draw_static_elements()
+        self.update_azimuth(0) # Initialize pointer at North
+
+    def _draw_static_elements(self):
+        # Draw outer circle
+        self.create_oval(
+            self.center - self.radius, self.center - self.radius,
+            self.center + self.radius, self.center + self.radius,
+            outline='gray', width=2
+        )
+        # Draw tick marks and labels
+        for angle in range(0, 360, 30):
+            angle_rad = math.radians(angle)
+            x1 = self.center + self.radius * math.sin(angle_rad)
+            y1 = self.center - self.radius * math.cos(angle_rad)
+            if angle % 90 == 0:
+                tick_len = 10
+                # Draw N, E, S, W labels
+                if angle == 0: label = "N"
+                elif angle == 90: label = "E"
+                elif angle == 180: label = "S"
+                else: label = "W"
+                x_text = self.center + (self.radius + 15) * math.sin(angle_rad)
+                y_text = self.center - (self.radius + 15) * math.cos(angle_rad)
+                self.create_text(x_text, y_text, text=label, font=("Arial", 12, "bold"))
+            else:
+                tick_len = 5
+
+            x2 = self.center + (self.radius - tick_len) * math.sin(angle_rad)
+            y2 = self.center - (self.radius - tick_len) * math.cos(angle_rad)
+            self.create_line(x1, y1, x2, y2, fill='gray', width=2)
+
+    def update_azimuth(self, angle):
+        """Updates the compass pointer to the given angle (in degrees)."""
+        if self.pointer:
+            self.delete(self.pointer)
+
+        # Angle needs to be converted to radians for trig functions
+        angle_rad = math.radians(angle)
+
+        x_end = self.center + self.radius * 0.9 * math.sin(angle_rad)
+        y_end = self.center - self.radius * 0.9 * math.cos(angle_rad)
+
+        # Draw the pointer as a red line with an arrow
+        self.pointer = self.create_line(
+            self.center, self.center, x_end, y_end,
+            arrow=tk.LAST, fill='red', width=3
+        )
+
+class ElevationIndicator(tk.Canvas):
+    """A tkinter canvas widget that displays a 180-degree arc for elevation."""
+    def __init__(self, parent, size=200, *args, **kwargs):
+        super().__init__(parent, width=size, height=size/2 + 25, *args, **kwargs)
+        self.size = size
+        self.center_x = size / 2
+        self.center_y = size / 2
+        self.radius = size / 2 * 0.9
+        self.pointer = None
+        self.configure(bg='white')
+        self._draw_static_elements()
+        self.update_elevation(0)
+
+    def _draw_static_elements(self):
+        # Draw the 180-degree arc
+        self.create_arc(
+            self.center_x - self.radius, self.center_y - self.radius,
+            self.center_x + self.radius, self.center_y + self.radius,
+            start=0, extent=180, style=tk.ARC, outline='gray', width=2
+        )
+        # Draw tick marks and labels for 0, 90, 180
+        for angle in range(0, 181, 45):
+            angle_rad = math.radians(180 - angle) # 0 is on the right
+            x1 = self.center_x + self.radius * math.cos(angle_rad)
+            y1 = self.center_y - self.radius * math.sin(angle_rad)
+
+            if angle % 90 == 0:
+                tick_len = 10
+                x_text = self.center_x + (self.radius + 15) * math.cos(angle_rad)
+                y_text = self.center_y - (self.radius + 15) * math.sin(angle_rad)
+                self.create_text(x_text, y_text, text=str(angle), font=("Arial", 10))
+            else:
+                tick_len = 5
+
+            x2 = self.center_x + (self.radius - tick_len) * math.cos(angle_rad)
+            y2 = self.center_y - (self.radius - tick_len) * math.sin(angle_rad)
+            self.create_line(x1, y1, x2, y2, fill='gray', width=2)
+
+    def update_elevation(self, angle):
+        """Updates the indicator to the given elevation angle."""
+        if self.pointer:
+            self.delete(self.pointer)
+
+        # Clamp angle between 0 and 180
+        angle = max(0, min(180, angle))
+
+        angle_rad = math.radians(180 - angle) # Convert to radians, 0 on right
+
+        x_end = self.center_x + self.radius * 0.95 * math.cos(angle_rad)
+        y_end = self.center_y - self.radius * 0.95 * math.sin(angle_rad)
+
+        self.pointer = self.create_line(
+            self.center_x, self.center_y, x_end, y_end,
+            arrow=tk.LAST, fill='blue', width=3
+        )
+
+
 class RotorControlGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Rotor Control")
-        self.geometry("600x750")
+
+        self.geometry("850x750")
+
 
         self.rotctld_process = None
         self.config_file = "rotor_config.json"
@@ -23,7 +144,49 @@ class RotorControlGUI(tk.Tk):
         self.after_id_rotor_monitor = None
 
         self.create_widgets()
+
+        self.find_hamlib_path() # Find hamlib on startup
         self.start_monitoring()
+
+    def find_hamlib_path(self):
+        path = self.hamlib_path_var.get()
+        if os.path.exists(os.path.join(path, "rotctld.exe")):
+            self.log(f"Hamlib found at configured path: {path}")
+            return
+
+        self.log("Hamlib not found in configured path. Searching common locations...")
+        search_paths = [
+            "C:\\Program Files\\hamlib-w64-4.6.3\\bin",
+            "C:\\Program Files\\hamlib\\bin",
+            "C:\\Program Files (x86)\\hamlib\\bin"
+        ]
+        for path in search_paths:
+            if os.path.exists(os.path.join(path, "rotctld.exe")):
+                self.log(f"Hamlib found at: {path}")
+                self.hamlib_path_var.set(path)
+                self.save_config()
+                return
+
+        self.log("Hamlib not found automatically.")
+        if messagebox.askyesno("Hamlib Not Found", "Could not automatically locate the Hamlib 'bin' directory. Would you like to browse for it manually?"):
+            self.browse_hamlib_path()
+        else:
+            self.log("Manual search for Hamlib canceled by user.")
+            self.start_server_button.config(state="disabled")
+
+
+    def browse_hamlib_path(self):
+        path = filedialog.askdirectory(title="Please select the Hamlib 'bin' directory")
+        if path:
+            if os.path.exists(os.path.join(path, "rotctld.exe")):
+                self.hamlib_path_var.set(path)
+                self.save_config()
+                self.log(f"Hamlib path set to: {path}")
+                self.start_server_button.config(state="normal")
+            else:
+                messagebox.showerror("Invalid Directory", f"The selected directory is not a valid Hamlib 'bin' directory. 'rotctld.exe' not found in {path}")
+                self.start_server_button.config(state="disabled")
+
 
     def load_config(self):
         if os.path.exists(self.config_file):
@@ -49,8 +212,22 @@ class RotorControlGUI(tk.Tk):
             json.dump(self.config, f, indent=4)
 
     def create_widgets(self):
+
+        # Main layout frames
+        main_frame = ttk.Frame(self)
+        main_frame.pack(padx=10, pady=10, fill="both", expand=True)
+
+        left_frame = ttk.Frame(main_frame)
+        left_frame.pack(side="left", fill="both", expand=True, padx=(0, 10))
+
+        right_frame = ttk.Frame(main_frame)
+        right_frame.pack(side="right", fill="both", expand=True)
+
+        # --- Left Frame Content (Controls) ---
+
         # Frame for rotctld settings
-        settings_frame = ttk.LabelFrame(self, text="rotctld Settings")
+        settings_frame = ttk.LabelFrame(left_frame, text="rotctld Settings")
+
         settings_frame.pack(padx=10, pady=10, fill="x")
 
         self.hamlib_path_var = tk.StringVar(value=self.config.get("hamlib_path"))
@@ -61,66 +238,78 @@ class RotorControlGUI(tk.Tk):
         self.port_var = tk.StringVar(value=self.config.get("port"))
 
         ttk.Label(settings_frame, text="Hamlib Path:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        ttk.Entry(settings_frame, textvariable=self.hamlib_path_var, width=50).grid(row=0, column=1, padx=5, pady=5)
+        
+        path_frame = ttk.Frame(settings_frame)
+        path_frame.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        ttk.Entry(path_frame, textvariable=self.hamlib_path_var, width=35).pack(side="left", fill="x", expand=True)
+        ttk.Button(path_frame, text="...", command=self.browse_hamlib_path, width=3).pack(side="left", padx=(5,0))
 
         ttk.Label(settings_frame, text="Rotor Model:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
         ttk.Entry(settings_frame, textvariable=self.rotor_model_var).grid(row=1, column=1, padx=5, pady=5, sticky="w")
-
-        ttk.Label(settings_frame, text="COM Port:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
-        ttk.Entry(settings_frame, textvariable=self.com_port_var).grid(row=2, column=1, padx=5, pady=5, sticky="w")
-
-        ttk.Label(settings_frame, text="Baud Rate:").grid(row=3, column=0, padx=5, pady=5, sticky="w")
-        ttk.Entry(settings_frame, textvariable=self.baud_rate_var).grid(row=3, column=1, padx=5, pady=5, sticky="w")
-
-        ttk.Label(settings_frame, text="Host:").grid(row=4, column=0, padx=5, pady=5, sticky="w")
-        ttk.Entry(settings_frame, textvariable=self.host_var).grid(row=4, column=1, padx=5, pady=5, sticky="w")
-
-        ttk.Label(settings_frame, text="Port:").grid(row=5, column=0, padx=5, pady=5, sticky="w")
-        ttk.Entry(settings_frame, textvariable=self.port_var).grid(row=5, column=1, padx=5, pady=5, sticky="w")
-
-        self.start_server_button = ttk.Button(settings_frame, text="Start Server", command=self.start_rotctld)
-        self.start_server_button.grid(row=6, column=0, padx=5, pady=10)
-
-        self.stop_server_button = ttk.Button(settings_frame, text="Stop Server", command=self.stop_rotctld, state="disabled")
-        self.stop_server_button.grid(row=6, column=1, padx=5, pady=10, sticky="w")
-
-        self.auto_reconnect_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(settings_frame, text="Attempt to auto-reconnect", variable=self.auto_reconnect_var).grid(row=7, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+        # ... (rest of settings)
 
         # Frame for rotor control
-        control_frame = ttk.LabelFrame(self, text="Rotor Control")
+        control_frame = ttk.LabelFrame(left_frame, text="Rotor Control")
         control_frame.pack(padx=10, pady=10, fill="x")
 
         self.azimuth_var = tk.StringVar(value="0")
         self.elevation_var = tk.StringVar(value="0")
 
-        ttk.Label(control_frame, text="Azimuth:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        ttk.Entry(control_frame, textvariable=self.azimuth_var).grid(row=0, column=1, padx=5, pady=5, sticky="w")
-
-        ttk.Label(control_frame, text="Elevation:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
-        ttk.Entry(control_frame, textvariable=self.elevation_var).grid(row=1, column=1, padx=5, pady=5, sticky="w")
-
-        self.set_position_button = ttk.Button(control_frame, text="Set Position", command=self.set_position, state="disabled")
-        self.set_position_button.grid(row=2, column=0, padx=5, pady=10)
-
-        self.get_position_button = ttk.Button(control_frame, text="Get Position", command=self.get_position, state="disabled")
-        self.get_position_button.grid(row=2, column=1, padx=5, pady=10, sticky="w")
-
+        # ... (rest of controls)
         self.current_position_var = tk.StringVar(value="Current Position: N/A")
         ttk.Label(control_frame, textvariable=self.current_position_var).grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
         # Frame for status and logs
-        status_frame = ttk.LabelFrame(self, text="Status & Logs")
+        status_frame = ttk.LabelFrame(left_frame, text="Status & Logs")
         status_frame.pack(padx=10, pady=10, fill="both", expand=True)
 
         self.server_status_var = tk.StringVar(value="Server Status: Stopped")
         ttk.Label(status_frame, textvariable=self.server_status_var).pack(padx=5, pady=5, anchor="w")
-
         self.rotor_conn_status_var = tk.StringVar(value="Rotor Connection: Disconnected")
         ttk.Label(status_frame, textvariable=self.rotor_conn_status_var).pack(padx=5, pady=5, anchor="w")
-
-        self.log_area = scrolledtext.ScrolledText(status_frame, wrap=tk.WORD, height=15)
+        self.log_area = scrolledtext.ScrolledText(status_frame, wrap=tk.WORD, height=10)
         self.log_area.pack(padx=5, pady=5, fill="both", expand=True)
+
+        # --- Right Frame Content (Visuals) ---
+        visuals_frame = ttk.LabelFrame(right_frame, text="Visual Display")
+        visuals_frame.pack(padx=10, pady=10, fill="both", expand=True)
+
+        ttk.Label(visuals_frame, text="Azimuth").pack(pady=(5,0))
+        self.compass = Compass(visuals_frame, size=250)
+        self.compass.pack(pady=5)
+
+        ttk.Label(visuals_frame, text="Elevation").pack(pady=(15,0))
+        self.elevation_indicator = ElevationIndicator(visuals_frame, size=200)
+        self.elevation_indicator.pack(pady=5)
+
+        # Re-populating all the widgets that were summarized for brevity
+
+        # Settings Frame
+        ttk.Label(settings_frame, text="COM Port:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(settings_frame, textvariable=self.com_port_var).grid(row=2, column=1, padx=5, pady=5, sticky="w")
+        ttk.Label(settings_frame, text="Baud Rate:").grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(settings_frame, textvariable=self.baud_rate_var).grid(row=3, column=1, padx=5, pady=5, sticky="w")
+        ttk.Label(settings_frame, text="Host:").grid(row=4, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(settings_frame, textvariable=self.host_var).grid(row=4, column=1, padx=5, pady=5, sticky="w")
+        ttk.Label(settings_frame, text="Port:").grid(row=5, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(settings_frame, textvariable=self.port_var).grid(row=5, column=1, padx=5, pady=5, sticky="w")
+        self.start_server_button = ttk.Button(settings_frame, text="Start Server", command=self.start_rotctld)
+        self.start_server_button.grid(row=6, column=0, padx=5, pady=10)
+        self.stop_server_button = ttk.Button(settings_frame, text="Stop Server", command=self.stop_rotctld, state="disabled")
+        self.stop_server_button.grid(row=6, column=1, padx=5, pady=10, sticky="w")
+        self.auto_reconnect_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(settings_frame, text="Attempt to auto-reconnect", variable=self.auto_reconnect_var).grid(row=7, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+
+        # Control Frame
+        ttk.Label(control_frame, text="Azimuth:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(control_frame, textvariable=self.azimuth_var).grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        ttk.Label(control_frame, text="Elevation:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(control_frame, textvariable=self.elevation_var).grid(row=1, column=1, padx=5, pady=5, sticky="w")
+        self.set_position_button = ttk.Button(control_frame, text="Set Position", command=self.set_position, state="disabled")
+        self.set_position_button.grid(row=2, column=0, padx=5, pady=10)
+        self.get_position_button = ttk.Button(control_frame, text="Get Position", command=self.get_position, state="disabled")
+        self.get_position_button.grid(row=2, column=1, padx=5, pady=10, sticky="w")
+
 
     def log(self, message):
         self.log_area.insert(tk.END, message + "\n")
@@ -187,6 +376,10 @@ class RotorControlGUI(tk.Tk):
         self.server_status_var.set("Server Status: Stopped")
         self.rotor_conn_status_var.set("Rotor Connection: Disconnected")
         self.current_position_var.set("Current Position: N/A")
+
+        if hasattr(self, 'compass'): self.compass.update_azimuth(0)
+        if hasattr(self, 'elevation_indicator'): self.elevation_indicator.update_elevation(0)
+
         self.rotor_connected = False
         self.start_server_button.config(state="normal")
         self.stop_server_button.config(state="disabled")
@@ -264,9 +457,20 @@ class RotorControlGUI(tk.Tk):
             self.rotor_connected = True
             self.rotor_conn_status_var.set("Rotor Connection: Connected")
             lines = stdout.split('\n')
-            az = lines[0] if lines else "N/A"
-            el = lines[1] if len(lines) > 1 else "N/A"
+
+            az = lines[0] if lines else "0.0"
+            el = lines[1] if len(lines) > 1 else "0.0"
             self.current_position_var.set(f"Current Position: Azimuth={az}, Elevation={el}")
+
+            try:
+                az_float = float(az)
+                el_float = float(el)
+                self.compass.update_azimuth(az_float)
+                self.elevation_indicator.update_elevation(el_float)
+            except (ValueError, TypeError):
+                pass # Ignore if values are not valid floats
+
+
             return True
 
     def start_monitoring(self):
