@@ -129,7 +129,9 @@ class RotorControlGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Rotor Control")
-        self.geometry("950x800")
+
+        self.geometry("1250x900")
+
 
         self.rotctld_process = None
         self.config_file = "rotor_config.json"
@@ -138,6 +140,7 @@ class RotorControlGUI(tk.Tk):
         # State variables for reconnection logic
         self.server_running_manually = False # Tracks if user intended the server to be running
         self.rotor_connected = False
+
         self.after_id_server_monitor = None
         self.after_id_rotor_monitor = None
 
@@ -148,6 +151,7 @@ class RotorControlGUI(tk.Tk):
         self.find_hamlib_path() # Find hamlib on startup
         self.update_com_ports() # Populate COM ports on startup
         self.start_monitoring()
+
 
     def update_com_ports(self):
         if list_ports is None:
@@ -228,11 +232,13 @@ class RotorControlGUI(tk.Tk):
             json.dump(self.config, f, indent=4)
 
     def create_widgets(self):
+
         # This is a complete rewrite of the widget creation to improve the layout.
 
         # Main layout frames
         main_frame = ttk.Frame(self)
         main_frame.pack(padx=10, pady=10, fill="both", expand=True)
+
 
         # Configure grid layout for main_frame
         main_frame.columnconfigure(0, weight=1) # Left frame column
@@ -253,12 +259,14 @@ class RotorControlGUI(tk.Tk):
         settings_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
         settings_frame.columnconfigure(1, weight=1)
 
+
         self.hamlib_path_var = tk.StringVar(value=self.config.get("hamlib_path"))
         self.rotor_model_var = tk.StringVar(value=self.config.get("rotor_model"))
         self.com_port_var = tk.StringVar(value=self.config.get("com_port"))
         self.baud_rate_var = tk.StringVar(value=self.config.get("baud_rate"))
         self.host_var = tk.StringVar(value=self.config.get("host"))
         self.port_var = tk.StringVar(value=self.config.get("port"))
+
 
         ttk.Label(settings_frame, text="Hamlib Path:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
         path_frame = ttk.Frame(settings_frame)
@@ -352,6 +360,7 @@ class RotorControlGUI(tk.Tk):
         self.elevation_indicator = ElevationIndicator(visuals_frame, size=250)
         self.elevation_indicator.grid(row=3, column=0, pady=5, sticky="nsew")
 
+
     def log(self, message):
         self.log_area.insert(tk.END, message + "\n")
         self.log_area.see(tk.END)
@@ -375,9 +384,11 @@ class RotorControlGUI(tk.Tk):
 
         try:
             self.log(f"Starting server: {' '.join(command)}")
+
             self.rotctld_process = subprocess.Popen(
                 command, cwd=hamlib_path, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
                 text=True, creationflags=subprocess.CREATE_NO_WINDOW
+
             )
 
             self.server_status_var.set("Server Status: Running")
@@ -388,6 +399,7 @@ class RotorControlGUI(tk.Tk):
 
             threading.Thread(target=self.read_process_output, args=(self.rotctld_process.stdout,), daemon=True).start()
             threading.Thread(target=self.read_process_output, args=(self.rotctld_process.stderr,), daemon=True).start()
+
             return True
         except Exception as e:
             messagebox.showerror("Error", f"Failed to start rotctld: {e}")
@@ -403,6 +415,7 @@ class RotorControlGUI(tk.Tk):
         if from_user:
             self.server_running_manually = False
 
+
         if self.rotctld_process:
             self.log("Stopping server...")
             self.rotctld_process.terminate()
@@ -413,6 +426,7 @@ class RotorControlGUI(tk.Tk):
                 self.rotctld_process.kill()
             self.rotctld_process = None
             self.log("Server stopped.")
+
 
         self.server_status_var.set("Server Status: Stopped")
         self.rotor_conn_status_var.set("Rotor Connection: Disconnected")
@@ -577,10 +591,13 @@ class RotorControlGUI(tk.Tk):
 
     def on_closing(self):
         self.save_config()
+
+
         if self.rotctld_process and self.rotctld_process.poll() is None:
             if messagebox.askokcancel("Quit", "The rotctld server is running. Do you want to stop it and quit?"):
                 self.stop_rotctld()
                 self.destroy()
+
         else:
             self.destroy()
 

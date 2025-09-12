@@ -1,0 +1,8 @@
+{
+    "hamlib_path": "C:\\Program Files\\hamlib-w64-4.6.3\\bin",
+    "rotor_model": "901",
+    "com_port": "COM6",
+    "baud_rate": "600",
+    "host": "127.0.0.1",
+    "port": "4533"
+}
