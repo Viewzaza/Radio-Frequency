@@ -129,9 +129,7 @@ class RotorControlGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Rotor Control")
-
         self.geometry("1250x900")
-
 
         self.rotctld_process = None
         self.config_file = "rotor_config.json"
@@ -140,7 +138,6 @@ class RotorControlGUI(tk.Tk):
         # State variables for reconnection logic
         self.server_running_manually = False # Tracks if user intended the server to be running
         self.rotor_connected = False
-
         self.after_id_server_monitor = None
         self.after_id_rotor_monitor = None
 
@@ -151,7 +148,6 @@ class RotorControlGUI(tk.Tk):
         self.find_hamlib_path() # Find hamlib on startup
         self.update_com_ports() # Populate COM ports on startup
         self.start_monitoring()
-
 
     def update_com_ports(self):
         if list_ports is None:
@@ -232,33 +228,21 @@ class RotorControlGUI(tk.Tk):
             json.dump(self.config, f, indent=4)
 
     def create_widgets(self):
-
-        # This is a complete rewrite of the widget creation to improve the layout.
-
         # Main layout frames
         main_frame = ttk.Frame(self)
         main_frame.pack(padx=10, pady=10, fill="both", expand=True)
 
-
-        # Configure grid layout for main_frame
-        main_frame.columnconfigure(0, weight=1) # Left frame column
-        main_frame.columnconfigure(1, weight=1) # Right frame column
-        main_frame.rowconfigure(0, weight=1)
-
         left_frame = ttk.Frame(main_frame)
-        left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        left_frame.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
         right_frame = ttk.Frame(main_frame)
-        right_frame.grid(row=0, column=1, sticky="nsew")
+        right_frame.pack(side="right", fill="both", expand=True)
 
         # --- Left Frame Content (Controls) ---
-        left_frame.rowconfigure(2, weight=1) # Make logs frame expand
 
         # Frame for rotctld settings
-        settings_frame = ttk.LabelFrame(left_frame, text="Server Settings")
-        settings_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
-        settings_frame.columnconfigure(1, weight=1)
-
+        settings_frame = ttk.LabelFrame(left_frame, text="rotctld Settings")
+        settings_frame.pack(padx=10, pady=10, fill="x")
 
         self.hamlib_path_var = tk.StringVar(value=self.config.get("hamlib_path"))
         self.rotor_model_var = tk.StringVar(value=self.config.get("rotor_model"))
@@ -267,99 +251,95 @@ class RotorControlGUI(tk.Tk):
         self.host_var = tk.StringVar(value=self.config.get("host"))
         self.port_var = tk.StringVar(value=self.config.get("port"))
 
-
-        ttk.Label(settings_frame, text="Hamlib Path:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        ttk.Label(settings_frame, text="Hamlib Path:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
         path_frame = ttk.Frame(settings_frame)
-        path_frame.grid(row=0, column=1, columnspan=2, padx=5, pady=2, sticky="ew")
-        ttk.Entry(path_frame, textvariable=self.hamlib_path_var).pack(side="left", fill="x", expand=True)
+        path_frame.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        ttk.Entry(path_frame, textvariable=self.hamlib_path_var, width=35).pack(side="left", fill="x", expand=True)
         ttk.Button(path_frame, text="...", command=self.browse_hamlib_path, width=3).pack(side="left", padx=(5,0))
 
-        ttk.Label(settings_frame, text="Rotor Model:").grid(row=1, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(settings_frame, textvariable=self.rotor_model_var).grid(row=1, column=1, columnspan=2, padx=5, pady=2, sticky="ew")
-
-        ttk.Label(settings_frame, text="COM Port:").grid(row=2, column=0, padx=5, pady=2, sticky="w")
-        com_frame = ttk.Frame(settings_frame)
-        com_frame.grid(row=2, column=1, columnspan=2, padx=5, pady=2, sticky="ew")
-        self.com_port_combo = ttk.Combobox(com_frame, textvariable=self.com_port_var, state='readonly')
-        self.com_port_combo.pack(side="left", fill="x", expand=True)
-        ttk.Button(com_frame, text="Refresh", command=self.update_com_ports, width=8).pack(side="left", padx=(5,0))
-
-        ttk.Label(settings_frame, text="Baud Rate:").grid(row=3, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(settings_frame, textvariable=self.baud_rate_var).grid(row=3, column=1, columnspan=2, padx=5, pady=2, sticky="ew")
-
-        server_button_frame = ttk.Frame(settings_frame)
-        server_button_frame.grid(row=6, column=0, columnspan=3, pady=5)
-        self.start_server_button = ttk.Button(server_button_frame, text="Start Server", command=self.start_rotctld)
-        self.start_server_button.pack(side="left", padx=5)
-        self.stop_server_button = ttk.Button(server_button_frame, text="Stop Server", command=self.stop_rotctld, state="disabled")
-        self.stop_server_button.pack(side="left", padx=5)
-
-        ttk.Checkbutton(settings_frame, text="Attempt to auto-reconnect server", variable=self.auto_reconnect_var).grid(row=7, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+        ttk.Label(settings_frame, text="Rotor Model:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(settings_frame, textvariable=self.rotor_model_var).grid(row=1, column=1, padx=5, pady=5, sticky="w")
+        # ... (rest of settings)
 
         # Frame for rotor control
-        control_frame = ttk.LabelFrame(left_frame, text="Manual Control")
-        control_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
-        control_frame.columnconfigure(1, weight=1)
+        control_frame = ttk.LabelFrame(left_frame, text="Rotor Control")
+        control_frame.pack(padx=10, pady=10, fill="x")
 
         self.azimuth_var = tk.StringVar(value="0")
         self.elevation_var = tk.StringVar(value="0")
 
-        ttk.Label(control_frame, text="Azimuth:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(control_frame, textvariable=self.azimuth_var).grid(row=0, column=1, padx=5, pady=2, sticky="ew")
-        ttk.Label(control_frame, text="Elevation:").grid(row=1, column=0, padx=5, pady=2, sticky="w")
-        ttk.Entry(control_frame, textvariable=self.elevation_var).grid(row=1, column=1, padx=5, pady=2, sticky="ew")
+        # ... (rest of controls)
+        self.current_position_var = tk.StringVar(value="Current Position: N/A")
+        ttk.Label(control_frame, textvariable=self.current_position_var).grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
-        control_button_frame = ttk.Frame(control_frame)
-        control_button_frame.grid(row=2, column=0, columnspan=2, pady=5)
-        self.set_position_button = ttk.Button(control_button_frame, text="Set Position", command=self.set_position, state="disabled")
-        self.set_position_button.pack(side="left", padx=5)
-        self.get_position_button = ttk.Button(control_button_frame, text="Get Position", command=self.get_position, state="disabled")
-        self.get_position_button.pack(side="left", padx=5)
-
-        ttk.Checkbutton(control_frame, text="Live GUI Updates", variable=self.live_updates_var).grid(row=4, column=0, columnspan=3, pady=5, sticky="w")
+        # Frame for manual commands
+        manual_cmd_frame = ttk.LabelFrame(left_frame, text="Manual Command")
+        manual_cmd_frame.pack(padx=10, pady=10, fill="x")
 
         self.manual_cmd_var = tk.StringVar()
-        ttk.Label(control_frame, text="Manual Cmd:").grid(row=3, column=0, padx=5, pady=2, sticky="w")
-        cmd_entry = ttk.Entry(control_frame, textvariable=self.manual_cmd_var)
-        cmd_entry.grid(row=3, column=1, padx=5, pady=2, sticky="ew")
-        cmd_entry.bind("<Return>", self.send_manual_command)
-        send_button = ttk.Button(control_frame, text="Send", command=self.send_manual_command, width=8)
-        send_button.grid(row=3, column=2, padx=5, pady=2)
+        cmd_entry = ttk.Entry(manual_cmd_frame, textvariable=self.manual_cmd_var)
+        cmd_entry.pack(side="left", fill="x", expand=True, padx=5, pady=5)
+        cmd_entry.bind("<Return>", self.send_manual_command) # Bind Enter key
+
+        send_button = ttk.Button(manual_cmd_frame, text="Send", command=self.send_manual_command)
+        send_button.pack(side="left", padx=5, pady=5)
 
         # Frame for status and logs
         status_frame = ttk.LabelFrame(left_frame, text="Status & Logs")
-        status_frame.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
-        status_frame.rowconfigure(2, weight=1)
-        status_frame.columnconfigure(0, weight=1)
+        status_frame.pack(padx=10, pady=10, fill="both", expand=True)
 
         self.server_status_var = tk.StringVar(value="Server Status: Stopped")
+        ttk.Label(status_frame, textvariable=self.server_status_var).pack(padx=5, pady=5, anchor="w")
         self.rotor_conn_status_var = tk.StringVar(value="Rotor Connection: Disconnected")
-        self.current_position_var = tk.StringVar(value="Current Position: N/A")
-
-        ttk.Label(status_frame, textvariable=self.server_status_var).grid(row=0, column=0, sticky="w", padx=5, pady=2)
-        ttk.Label(status_frame, textvariable=self.rotor_conn_status_var).grid(row=1, column=0, sticky="w", padx=5, pady=2)
-        ttk.Label(status_frame, textvariable=self.current_position_var).grid(row=2, column=0, sticky="w", padx=5, pady=2)
-
+        ttk.Label(status_frame, textvariable=self.rotor_conn_status_var).pack(padx=5, pady=5, anchor="w")
         self.log_area = scrolledtext.ScrolledText(status_frame, wrap=tk.WORD, height=10)
-        self.log_area.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
+        self.log_area.pack(padx=5, pady=5, fill="both", expand=True)
 
         # --- Right Frame Content (Visuals) ---
-        right_frame.rowconfigure(0, weight=1)
-        right_frame.columnconfigure(0, weight=1)
         visuals_frame = ttk.LabelFrame(right_frame, text="Visual Display")
-        visuals_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-        visuals_frame.rowconfigure(1, weight=1) # Azimuth row
-        visuals_frame.rowconfigure(3, weight=1) # Elevation row
-        visuals_frame.columnconfigure(0, weight=1)
+        visuals_frame.pack(padx=10, pady=10, fill="both", expand=True)
 
-        ttk.Label(visuals_frame, text="Azimuth", font=("Arial", 14)).grid(row=0, column=0, pady=(5,0))
+        ttk.Label(visuals_frame, text="Azimuth", font=("Arial", 14)).pack(pady=(5,0))
         self.compass = Compass(visuals_frame, size=300)
-        self.compass.grid(row=1, column=0, pady=5, sticky="nsew")
+        self.compass.pack(pady=5, expand=True)
 
-        ttk.Label(visuals_frame, text="Elevation", font=("Arial", 14)).grid(row=2, column=0, pady=(15,0))
+        ttk.Label(visuals_frame, text="Elevation", font=("Arial", 14)).pack(pady=(15,0))
         self.elevation_indicator = ElevationIndicator(visuals_frame, size=250)
-        self.elevation_indicator.grid(row=3, column=0, pady=5, sticky="nsew")
+        self.elevation_indicator.pack(pady=5, expand=True)
 
+        # Re-populating all the widgets that were summarized for brevity
+
+        # Settings Frame
+        ttk.Label(settings_frame, text="COM Port:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+        com_frame = ttk.Frame(settings_frame)
+        com_frame.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+        self.com_port_combo = ttk.Combobox(com_frame, textvariable=self.com_port_var, width=10)
+        self.com_port_combo.pack(side="left", fill="x", expand=True)
+        ttk.Button(com_frame, text="Refresh", command=self.update_com_ports, width=8).pack(side="left", padx=(5,0))
+
+        ttk.Label(settings_frame, text="Baud Rate:").grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(settings_frame, textvariable=self.baud_rate_var).grid(row=3, column=1, padx=5, pady=5, sticky="w")
+        ttk.Label(settings_frame, text="Host:").grid(row=4, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(settings_frame, textvariable=self.host_var).grid(row=4, column=1, padx=5, pady=5, sticky="w")
+        ttk.Label(settings_frame, text="Port:").grid(row=5, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(settings_frame, textvariable=self.port_var).grid(row=5, column=1, padx=5, pady=5, sticky="w")
+        self.start_server_button = ttk.Button(settings_frame, text="Start Server", command=self.start_rotctld)
+        self.start_server_button.grid(row=6, column=0, padx=5, pady=10)
+        self.stop_server_button = ttk.Button(settings_frame, text="Stop Server", command=self.stop_rotctld, state="disabled")
+        self.stop_server_button.grid(row=6, column=1, padx=5, pady=10, sticky="w")
+        ttk.Checkbutton(settings_frame, text="Attempt to auto-reconnect", variable=self.auto_reconnect_var).grid(row=7, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+
+        # Control Frame
+        ttk.Label(control_frame, text="Azimuth:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(control_frame, textvariable=self.azimuth_var).grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        ttk.Label(control_frame, text="Elevation:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        ttk.Entry(control_frame, textvariable=self.elevation_var).grid(row=1, column=1, padx=5, pady=5, sticky="w")
+        self.set_position_button = ttk.Button(control_frame, text="Set Position", command=self.set_position, state="disabled")
+        self.set_position_button.grid(row=2, column=0, padx=5, pady=10)
+        self.get_position_button = ttk.Button(control_frame, text="Get Position", command=self.get_position, state="disabled")
+        self.get_position_button.grid(row=2, column=1, padx=5, pady=10, sticky="w")
+
+        ttk.Checkbutton(control_frame, text="Live GUI Updates", variable=self.live_updates_var).grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
     def log(self, message):
         self.log_area.insert(tk.END, message + "\n")
@@ -384,11 +364,9 @@ class RotorControlGUI(tk.Tk):
 
         try:
             self.log(f"Starting server: {' '.join(command)}")
-
             self.rotctld_process = subprocess.Popen(
                 command, cwd=hamlib_path, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
                 text=True, creationflags=subprocess.CREATE_NO_WINDOW
-
             )
 
             self.server_status_var.set("Server Status: Running")
@@ -399,7 +377,6 @@ class RotorControlGUI(tk.Tk):
 
             threading.Thread(target=self.read_process_output, args=(self.rotctld_process.stdout,), daemon=True).start()
             threading.Thread(target=self.read_process_output, args=(self.rotctld_process.stderr,), daemon=True).start()
-
             return True
         except Exception as e:
             messagebox.showerror("Error", f"Failed to start rotctld: {e}")
@@ -415,7 +392,6 @@ class RotorControlGUI(tk.Tk):
         if from_user:
             self.server_running_manually = False
 
-
         if self.rotctld_process:
             self.log("Stopping server...")
             self.rotctld_process.terminate()
@@ -426,7 +402,6 @@ class RotorControlGUI(tk.Tk):
                 self.rotctld_process.kill()
             self.rotctld_process = None
             self.log("Server stopped.")
-
 
         self.server_status_var.set("Server Status: Stopped")
         self.rotor_conn_status_var.set("Rotor Connection: Disconnected")
@@ -591,13 +566,17 @@ class RotorControlGUI(tk.Tk):
 
     def on_closing(self):
         self.save_config()
-
+        # Cancel monitoring loops to prevent errors on exit
+        if self.after_id_server_monitor: self.after_cancel(self.after_id_server_monitor)
+        if self.after_id_rotor_monitor: self.after_cancel(self.after_id_rotor_monitor)
 
         if self.rotctld_process and self.rotctld_process.poll() is None:
             if messagebox.askokcancel("Quit", "The rotctld server is running. Do you want to stop it and quit?"):
                 self.stop_rotctld()
                 self.destroy()
-
+            else:
+                # If they cancel, restart monitoring
+                self.start_monitoring()
         else:
             self.destroy()
 
