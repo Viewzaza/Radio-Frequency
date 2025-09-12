@@ -2,12 +2,13 @@ import tkinter as tk
 
 from tkinter import ttk, messagebox, scrolledtext, filedialog
 
+
+
 import subprocess
 import threading
 import time
 import json
 import os
-
 import math
 
 class Compass(tk.Canvas):
@@ -42,10 +43,11 @@ class Compass(tk.Canvas):
                 elif angle == 180: label = "S"
                 else: label = "W"
                 x_text = self.center + (self.radius + 15) * math.sin(angle_rad)
-                y_text = self.center - (self.radius + 15) * math.cos(angle_rad)
-                self.create_text(x_text, y_text, text=label, font=("Arial", 12, "bold"))
+
+                y_text = self.center - (self.radius + 20) * math.cos(angle_rad)
+                self.create_text(x_text, y_text, text=label, font=("Arial", 16, "bold"))
             else:
-                tick_len = 5
+                tick_len = 7
 
             x2 = self.center + (self.radius - tick_len) * math.sin(angle_rad)
             y2 = self.center - (self.radius - tick_len) * math.cos(angle_rad)
@@ -96,11 +98,12 @@ class ElevationIndicator(tk.Canvas):
 
             if angle % 90 == 0:
                 tick_len = 10
-                x_text = self.center_x + (self.radius + 15) * math.cos(angle_rad)
-                y_text = self.center_y - (self.radius + 15) * math.sin(angle_rad)
-                self.create_text(x_text, y_text, text=str(angle), font=("Arial", 10))
+
+                x_text = self.center_x + (self.radius + 18) * math.cos(angle_rad)
+                y_text = self.center_y - (self.radius + 18) * math.sin(angle_rad)
+                self.create_text(x_text, y_text, text=str(angle), font=("Arial", 12))
             else:
-                tick_len = 5
+                tick_len = 7
 
             x2 = self.center_x + (self.radius - tick_len) * math.cos(angle_rad)
             y2 = self.center_y - (self.radius - tick_len) * math.sin(angle_rad)
@@ -130,7 +133,7 @@ class RotorControlGUI(tk.Tk):
         super().__init__()
         self.title("Rotor Control")
 
-        self.geometry("850x750")
+        self.geometry("950x800")
 
 
         self.rotctld_process = None
@@ -238,7 +241,7 @@ class RotorControlGUI(tk.Tk):
         self.port_var = tk.StringVar(value=self.config.get("port"))
 
         ttk.Label(settings_frame, text="Hamlib Path:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        
+
         path_frame = ttk.Frame(settings_frame)
         path_frame.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
         ttk.Entry(path_frame, textvariable=self.hamlib_path_var, width=35).pack(side="left", fill="x", expand=True)
@@ -259,6 +262,19 @@ class RotorControlGUI(tk.Tk):
         self.current_position_var = tk.StringVar(value="Current Position: N/A")
         ttk.Label(control_frame, textvariable=self.current_position_var).grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
+
+        # Frame for manual commands
+        manual_cmd_frame = ttk.LabelFrame(left_frame, text="Manual Command")
+        manual_cmd_frame.pack(padx=10, pady=10, fill="x")
+
+        self.manual_cmd_var = tk.StringVar()
+        cmd_entry = ttk.Entry(manual_cmd_frame, textvariable=self.manual_cmd_var)
+        cmd_entry.pack(side="left", fill="x", expand=True, padx=5, pady=5)
+        cmd_entry.bind("<Return>", self.send_manual_command) # Bind Enter key
+
+        send_button = ttk.Button(manual_cmd_frame, text="Send", command=self.send_manual_command)
+        send_button.pack(side="left", padx=5, pady=5)
+
         # Frame for status and logs
         status_frame = ttk.LabelFrame(left_frame, text="Status & Logs")
         status_frame.pack(padx=10, pady=10, fill="both", expand=True)
@@ -274,13 +290,15 @@ class RotorControlGUI(tk.Tk):
         visuals_frame = ttk.LabelFrame(right_frame, text="Visual Display")
         visuals_frame.pack(padx=10, pady=10, fill="both", expand=True)
 
-        ttk.Label(visuals_frame, text="Azimuth").pack(pady=(5,0))
-        self.compass = Compass(visuals_frame, size=250)
-        self.compass.pack(pady=5)
 
-        ttk.Label(visuals_frame, text="Elevation").pack(pady=(15,0))
-        self.elevation_indicator = ElevationIndicator(visuals_frame, size=200)
-        self.elevation_indicator.pack(pady=5)
+        ttk.Label(visuals_frame, text="Azimuth", font=("Arial", 14)).pack(pady=(5,0))
+        self.compass = Compass(visuals_frame, size=300)
+        self.compass.pack(pady=5, expand=True)
+
+        ttk.Label(visuals_frame, text="Elevation", font=("Arial", 14)).pack(pady=(15,0))
+        self.elevation_indicator = ElevationIndicator(visuals_frame, size=250)
+        self.elevation_indicator.pack(pady=5, expand=True)
+
 
         # Re-populating all the widgets that were summarized for brevity
 
@@ -440,6 +458,30 @@ class RotorControlGUI(tk.Tk):
         self.log("Manual position check requested.")
         self.check_rotor_connection()
 
+    def send_manual_command(self, event=None):
+        if not self.rotor_connected:
+            messagebox.showwarning("Warning", "Rotor not connected. Cannot send command.")
+            return
+
+        command_str = self.manual_cmd_var.get()
+        if not command_str:
+            return
+
+        command_args = command_str.split()
+        self.log(f"MANUAL CMD: {command_str}")
+
+        stdout, stderr = self.run_rotctl_command(command_args)
+
+        if stdout:
+            self.log(f"OUTPUT: {stdout}")
+        if stderr:
+            self.log(f"ERROR: {stderr}")
+
+        # After sending a command, it's good practice to check the position again
+        # to update the state and visuals.
+        self.after(500, self.check_rotor_connection)
+        self.manual_cmd_var.set("") # Clear the entry
+
     def check_rotor_connection(self):
         # This is the core connection check function
         stdout, stderr = self.run_rotctl_command(["p"])
@@ -457,7 +499,6 @@ class RotorControlGUI(tk.Tk):
             self.rotor_connected = True
             self.rotor_conn_status_var.set("Rotor Connection: Connected")
             lines = stdout.split('\n')
-
             az = lines[0] if lines else "0.0"
             el = lines[1] if len(lines) > 1 else "0.0"
             self.current_position_var.set(f"Current Position: Azimuth={az}, Elevation={el}")
@@ -469,7 +510,6 @@ class RotorControlGUI(tk.Tk):
                 self.elevation_indicator.update_elevation(el_float)
             except (ValueError, TypeError):
                 pass # Ignore if values are not valid floats
-
 
             return True
 
