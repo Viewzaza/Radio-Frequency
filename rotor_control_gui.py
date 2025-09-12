@@ -139,9 +139,11 @@ class RotorControlGUI(tk.Tk):
         self.server_running_manually = False # Tracks if user intended the server to be running
         self.rotor_connected = False
 
+
         self.create_widgets()
         self.find_hamlib_path() # Find hamlib on startup
         self.update_com_ports() # Populate COM ports on startup
+
 
     def update_com_ports(self):
         if list_ports is None:
@@ -322,6 +324,7 @@ class RotorControlGUI(tk.Tk):
         self.stop_server_button = ttk.Button(settings_frame, text="Stop Server", command=self.stop_rotctld, state="disabled")
         self.stop_server_button.grid(row=6, column=1, padx=5, pady=10, sticky="w")
 
+
         # Control Frame
         ttk.Label(control_frame, text="Azimuth:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
         ttk.Entry(control_frame, textvariable=self.azimuth_var).grid(row=0, column=1, padx=5, pady=5, sticky="w")
@@ -331,6 +334,7 @@ class RotorControlGUI(tk.Tk):
         self.set_position_button.grid(row=2, column=0, padx=5, pady=10)
         self.get_position_button = ttk.Button(control_frame, text="Get Position", command=self.get_position, state="disabled")
         self.get_position_button.grid(row=2, column=1, padx=5, pady=10, sticky="w")
+
 
     def log(self, message):
         self.log_area.insert(tk.END, message + "\n")
@@ -355,11 +359,13 @@ class RotorControlGUI(tk.Tk):
 
         try:
             self.log(f"Starting server: {' '.join(command)}")
+
             # DETACHED_PROCESS will make rotctld run independently of the GUI
             # We can no longer capture its stdout/stderr, so those are removed.
             subprocess.Popen(
                 command, cwd=hamlib_path,
                 creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+
             )
 
             self.server_status_var.set("Server Status: Running")
@@ -367,6 +373,7 @@ class RotorControlGUI(tk.Tk):
             self.stop_server_button.config(state="normal")
             self.set_position_button.config(state="normal")
             self.get_position_button.config(state="normal")
+
 
             # The process is detached, so we can't monitor it directly.
             # We will assume it's running until the user stops it.
@@ -408,6 +415,7 @@ class RotorControlGUI(tk.Tk):
             self.log(f"Info: 'taskkill' command finished. Output: {e.stderr or e.stdout}")
 
         self.rotctld_process = False # Update our state tracker
+
         self.server_status_var.set("Server Status: Stopped")
         self.rotor_conn_status_var.set("Rotor Connection: Disconnected")
         self.current_position_var.set("Current Position: N/A")
@@ -534,6 +542,7 @@ class RotorControlGUI(tk.Tk):
             if messagebox.askokcancel("Quit", "The rotctld server is still running in the background. Do you want to stop it and quit?"):
                 self.stop_rotctld()
                 self.destroy()
+
         else:
             self.destroy()
 
