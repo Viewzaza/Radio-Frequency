@@ -138,16 +138,20 @@ class RotorControlGUI(tk.Tk):
         # State variables for reconnection logic
         self.server_running_manually = False # Tracks if user intended the server to be running
         self.rotor_connected = False
+
         self.after_id_server_monitor = None
         self.after_id_rotor_monitor = None
 
         self.auto_reconnect_var = tk.BooleanVar(value=True)
         self.live_updates_var = tk.BooleanVar(value=True)
 
+
         self.create_widgets()
         self.find_hamlib_path() # Find hamlib on startup
         self.update_com_ports() # Populate COM ports on startup
+
         self.start_monitoring()
+
 
     def update_com_ports(self):
         if list_ports is None:
@@ -327,7 +331,9 @@ class RotorControlGUI(tk.Tk):
         self.start_server_button.grid(row=6, column=0, padx=5, pady=10)
         self.stop_server_button = ttk.Button(settings_frame, text="Stop Server", command=self.stop_rotctld, state="disabled")
         self.stop_server_button.grid(row=6, column=1, padx=5, pady=10, sticky="w")
+
         ttk.Checkbutton(settings_frame, text="Attempt to auto-reconnect", variable=self.auto_reconnect_var).grid(row=7, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+
 
         # Control Frame
         ttk.Label(control_frame, text="Azimuth:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
@@ -339,7 +345,9 @@ class RotorControlGUI(tk.Tk):
         self.get_position_button = ttk.Button(control_frame, text="Get Position", command=self.get_position, state="disabled")
         self.get_position_button.grid(row=2, column=1, padx=5, pady=10, sticky="w")
 
+
         ttk.Checkbutton(control_frame, text="Live GUI Updates", variable=self.live_updates_var).grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+
 
     def log(self, message):
         self.log_area.insert(tk.END, message + "\n")
@@ -364,9 +372,11 @@ class RotorControlGUI(tk.Tk):
 
         try:
             self.log(f"Starting server: {' '.join(command)}")
+
             self.rotctld_process = subprocess.Popen(
                 command, cwd=hamlib_path, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
                 text=True, creationflags=subprocess.CREATE_NO_WINDOW
+
             )
 
             self.server_status_var.set("Server Status: Running")
@@ -377,6 +387,7 @@ class RotorControlGUI(tk.Tk):
 
             threading.Thread(target=self.read_process_output, args=(self.rotctld_process.stdout,), daemon=True).start()
             threading.Thread(target=self.read_process_output, args=(self.rotctld_process.stderr,), daemon=True).start()
+
             return True
         except Exception as e:
             messagebox.showerror("Error", f"Failed to start rotctld: {e}")
@@ -392,6 +403,7 @@ class RotorControlGUI(tk.Tk):
         if from_user:
             self.server_running_manually = False
 
+
         if self.rotctld_process:
             self.log("Stopping server...")
             self.rotctld_process.terminate()
@@ -402,6 +414,7 @@ class RotorControlGUI(tk.Tk):
                 self.rotctld_process.kill()
             self.rotctld_process = None
             self.log("Server stopped.")
+
 
         self.server_status_var.set("Server Status: Stopped")
         self.rotor_conn_status_var.set("Rotor Connection: Disconnected")
@@ -577,6 +590,7 @@ class RotorControlGUI(tk.Tk):
             else:
                 # If they cancel, restart monitoring
                 self.start_monitoring()
+
         else:
             self.destroy()
 
