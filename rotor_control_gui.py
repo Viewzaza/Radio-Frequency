@@ -138,15 +138,12 @@ class RotorControlGUI(tk.Tk):
         # State variables for reconnection logic
         self.server_running_manually = False # Tracks if user intended the server to be running
         self.rotor_connected = False
-        self.after_id_server_monitor = None
-        self.after_id_rotor_monitor = None
 
-        self.live_updates_var = tk.BooleanVar(value=True)
 
         self.create_widgets()
         self.find_hamlib_path() # Find hamlib on startup
         self.update_com_ports() # Populate COM ports on startup
-        self.start_monitoring()
+
 
     def update_com_ports(self):
         if list_ports is None:
@@ -326,8 +323,7 @@ class RotorControlGUI(tk.Tk):
         self.start_server_button.grid(row=6, column=0, padx=5, pady=10)
         self.stop_server_button = ttk.Button(settings_frame, text="Stop Server", command=self.stop_rotctld, state="disabled")
         self.stop_server_button.grid(row=6, column=1, padx=5, pady=10, sticky="w")
-        self.auto_reconnect_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(settings_frame, text="Attempt to auto-reconnect", variable=self.auto_reconnect_var).grid(row=7, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+
 
         # Control Frame
         ttk.Label(control_frame, text="Azimuth:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
@@ -339,8 +335,6 @@ class RotorControlGUI(tk.Tk):
         self.get_position_button = ttk.Button(control_frame, text="Get Position", command=self.get_position, state="disabled")
         self.get_position_button.grid(row=2, column=1, padx=5, pady=10, sticky="w")
 
-        live_updates_check = ttk.Checkbutton(control_frame, text="Live GUI Updates", variable=self.live_updates_var)
-        live_updates_check.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
     def log(self, message):
         self.log_area.insert(tk.END, message + "\n")
@@ -365,9 +359,13 @@ class RotorControlGUI(tk.Tk):
 
         try:
             self.log(f"Starting server: {' '.join(command)}")
-            self.rotctld_process = subprocess.Popen(
-                command, cwd=hamlib_path, stderr=subprocess.PIPE, stdout=subprocess.PIPE,
-                text=True, creationflags=subprocess.CREATE_NO_WINDOW
+
+            # DETACHED_PROCESS will make rotctld run independently of the GUI
+            # We can no longer capture its stdout/stderr, so those are removed.
+            subprocess.Popen(
+                command, cwd=hamlib_path,
+                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+
             )
 
             self.server_status_var.set("Server Status: Running")
@@ -376,8 +374,16 @@ class RotorControlGUI(tk.Tk):
             self.set_position_button.config(state="normal")
             self.get_position_button.config(state="normal")
 
-            threading.Thread(target=self.read_process_output, args=(self.rotctld_process.stdout,), daemon=True).start()
-            threading.Thread(target=self.read_process_output, args=(self.rotctld_process.stderr,), daemon=True).start()
+
+            # The process is detached, so we can't monitor it directly.
+            # We will assume it's running until the user stops it.
+            self.rotctld_process = True # Use a simple boolean to track state
+
+            # We must also assume the rotor is now connected, or will be shortly.
+            # The user can use the manual Get Position button to verify.
+            self.rotor_connected = True
+            self.rotor_conn_status_var.set("Rotor Connection: Connected")
+
             return True
         except Exception as e:
             messagebox.showerror("Error", f"Failed to start rotctld: {e}")
@@ -393,16 +399,22 @@ class RotorControlGUI(tk.Tk):
         if from_user:
             self.server_running_manually = False
 
-        if self.rotctld_process:
-            self.log("Stopping server...")
-            self.rotctld_process.terminate()
-            try:
-                self.rotctld_process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.log("Server did not terminate, killing it.")
-                self.rotctld_process.kill()
-            self.rotctld_process = None
-            self.log("Server stopped.")
+        self.log("Stopping server...")
+        try:
+            # Use taskkill to forcefully terminate the detached process by its image name
+            # This is a Windows-specific command.
+            result = subprocess.run(
+                ["taskkill", "/F", "/IM", "rotctld.exe"],
+                capture_output=True, text=True, check=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            self.log("Server stopped successfully.")
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            # It's common for taskkill to report an error if the process is already gone.
+            # We can log this but don't need to show a user-facing error.
+            self.log(f"Info: 'taskkill' command finished. Output: {e.stderr or e.stdout}")
+
+        self.rotctld_process = False # Update our state tracker
 
         self.server_status_var.set("Server Status: Stopped")
         self.rotor_conn_status_var.set("Rotor Connection: Disconnected")
@@ -524,61 +536,13 @@ class RotorControlGUI(tk.Tk):
 
             return True
 
-    def start_monitoring(self):
-        self.monitor_server_process()
-        self.monitor_rotor_connection()
-
-    def monitor_server_process(self):
-        if self.after_id_server_monitor:
-            self.after_cancel(self.after_id_server_monitor)
-
-        is_running = self.rotctld_process and self.rotctld_process.poll() is None
-
-        if self.server_running_manually and not is_running and self.auto_reconnect_var.get():
-            self.log("Server process terminated unexpectedly. Attempting to restart...")
-            self.stop_rotctld(from_user=False) # Clean up first
-            self.start_rotctld(from_user=False)
-
-        # Update GUI status
-        if is_running:
-            self.server_status_var.set("Server Status: Running")
-        else:
-            self.server_status_var.set("Server Status: Stopped")
-
-        self.after_id_server_monitor = self.after(3000, self.monitor_server_process)
-
-    def monitor_rotor_connection(self):
-        if self.after_id_rotor_monitor:
-            self.after_cancel(self.after_id_rotor_monitor)
-
-        is_server_running = self.rotctld_process and self.rotctld_process.poll() is None
-
-        if is_server_running:
-            # Only perform the check if live updates are enabled
-            if self.live_updates_var.get():
-                if not self.rotor_connected and self.auto_reconnect_var.get():
-                    self.rotor_conn_status_var.set("Rotor Connection: Attempting to connect...")
-                self.check_rotor_connection()
-        else:
-            self.rotor_connected = False
-            self.rotor_conn_status_var.set("Rotor Connection: Disconnected")
-            self.current_position_var.set("Current Position: N/A")
-
-        self.after_id_rotor_monitor = self.after(5000, self.monitor_rotor_connection)
-
     def on_closing(self):
         self.save_config()
-        # Cancel monitoring loops to prevent errors on exit
-        if self.after_id_server_monitor: self.after_cancel(self.after_id_server_monitor)
-        if self.after_id_rotor_monitor: self.after_cancel(self.after_id_rotor_monitor)
-
-        if self.rotctld_process and self.rotctld_process.poll() is None:
-            if messagebox.askokcancel("Quit", "The rotctld server is running. Do you want to stop it and quit?"):
+        if self.rotctld_process:
+            if messagebox.askokcancel("Quit", "The rotctld server is still running in the background. Do you want to stop it and quit?"):
                 self.stop_rotctld()
                 self.destroy()
-            else:
-                # If they cancel, restart monitoring
-                self.start_monitoring()
+
         else:
             self.destroy()
 
