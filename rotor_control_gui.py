@@ -1,10 +1,13 @@
 import tkinter as tk
+
 from tkinter import ttk, messagebox, scrolledtext, filedialog
+
 import subprocess
 import threading
 import time
 import json
 import os
+
 import math
 
 class Compass(tk.Canvas):
@@ -121,11 +124,14 @@ class ElevationIndicator(tk.Canvas):
             arrow=tk.LAST, fill='blue', width=3
         )
 
+
 class RotorControlGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Rotor Control")
+
         self.geometry("850x750")
+
 
         self.rotctld_process = None
         self.config_file = "rotor_config.json"
@@ -138,6 +144,7 @@ class RotorControlGUI(tk.Tk):
         self.after_id_rotor_monitor = None
 
         self.create_widgets()
+
         self.find_hamlib_path() # Find hamlib on startup
         self.start_monitoring()
 
@@ -180,6 +187,7 @@ class RotorControlGUI(tk.Tk):
                 messagebox.showerror("Invalid Directory", f"The selected directory is not a valid Hamlib 'bin' directory. 'rotctld.exe' not found in {path}")
                 self.start_server_button.config(state="disabled")
 
+
     def load_config(self):
         if os.path.exists(self.config_file):
             with open(self.config_file, 'r') as f:
@@ -204,6 +212,7 @@ class RotorControlGUI(tk.Tk):
             json.dump(self.config, f, indent=4)
 
     def create_widgets(self):
+
         # Main layout frames
         main_frame = ttk.Frame(self)
         main_frame.pack(padx=10, pady=10, fill="both", expand=True)
@@ -218,6 +227,7 @@ class RotorControlGUI(tk.Tk):
 
         # Frame for rotctld settings
         settings_frame = ttk.LabelFrame(left_frame, text="rotctld Settings")
+
         settings_frame.pack(padx=10, pady=10, fill="x")
 
         self.hamlib_path_var = tk.StringVar(value=self.config.get("hamlib_path"))
@@ -228,6 +238,7 @@ class RotorControlGUI(tk.Tk):
         self.port_var = tk.StringVar(value=self.config.get("port"))
 
         ttk.Label(settings_frame, text="Hamlib Path:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        
         path_frame = ttk.Frame(settings_frame)
         path_frame.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
         ttk.Entry(path_frame, textvariable=self.hamlib_path_var, width=35).pack(side="left", fill="x", expand=True)
@@ -299,6 +310,7 @@ class RotorControlGUI(tk.Tk):
         self.get_position_button = ttk.Button(control_frame, text="Get Position", command=self.get_position, state="disabled")
         self.get_position_button.grid(row=2, column=1, padx=5, pady=10, sticky="w")
 
+
     def log(self, message):
         self.log_area.insert(tk.END, message + "\n")
         self.log_area.see(tk.END)
@@ -364,8 +376,10 @@ class RotorControlGUI(tk.Tk):
         self.server_status_var.set("Server Status: Stopped")
         self.rotor_conn_status_var.set("Rotor Connection: Disconnected")
         self.current_position_var.set("Current Position: N/A")
+
         if hasattr(self, 'compass'): self.compass.update_azimuth(0)
         if hasattr(self, 'elevation_indicator'): self.elevation_indicator.update_elevation(0)
+
         self.rotor_connected = False
         self.start_server_button.config(state="normal")
         self.stop_server_button.config(state="disabled")
@@ -443,6 +457,7 @@ class RotorControlGUI(tk.Tk):
             self.rotor_connected = True
             self.rotor_conn_status_var.set("Rotor Connection: Connected")
             lines = stdout.split('\n')
+
             az = lines[0] if lines else "0.0"
             el = lines[1] if len(lines) > 1 else "0.0"
             self.current_position_var.set(f"Current Position: Azimuth={az}, Elevation={el}")
@@ -454,6 +469,7 @@ class RotorControlGUI(tk.Tk):
                 self.elevation_indicator.update_elevation(el_float)
             except (ValueError, TypeError):
                 pass # Ignore if values are not valid floats
+
 
             return True
 
