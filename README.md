@@ -1,6 +1,6 @@
-#rotor-control-gui
+## rotor-control-gui
 
-#feat: Create GUI for radio rotor control
+# feat: Create GUI for radio rotor control
 
 This commit introduces a new Python application, `rotor_control_gui.py`, that provides a graphical user interface for controlling a radio rotor using `hamlib`.
 
