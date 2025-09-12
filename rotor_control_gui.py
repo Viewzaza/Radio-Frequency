@@ -1,10 +1,10 @@
 import tkinter as tk
-
 from tkinter import ttk, messagebox, scrolledtext, filedialog
-
-
-
 import subprocess
+try:
+    from serial.tools import list_ports
+except ImportError:
+    list_ports = None
 import threading
 import time
 import json
@@ -43,7 +43,6 @@ class Compass(tk.Canvas):
                 elif angle == 180: label = "S"
                 else: label = "W"
                 x_text = self.center + (self.radius + 15) * math.sin(angle_rad)
-
                 y_text = self.center - (self.radius + 20) * math.cos(angle_rad)
                 self.create_text(x_text, y_text, text=label, font=("Arial", 16, "bold"))
             else:
@@ -98,7 +97,6 @@ class ElevationIndicator(tk.Canvas):
 
             if angle % 90 == 0:
                 tick_len = 10
-
                 x_text = self.center_x + (self.radius + 18) * math.cos(angle_rad)
                 y_text = self.center_y - (self.radius + 18) * math.sin(angle_rad)
                 self.create_text(x_text, y_text, text=str(angle), font=("Arial", 12))
@@ -127,14 +125,11 @@ class ElevationIndicator(tk.Canvas):
             arrow=tk.LAST, fill='blue', width=3
         )
 
-
 class RotorControlGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Rotor Control")
-
         self.geometry("950x800")
-
 
         self.rotctld_process = None
         self.config_file = "rotor_config.json"
@@ -146,10 +141,28 @@ class RotorControlGUI(tk.Tk):
         self.after_id_server_monitor = None
         self.after_id_rotor_monitor = None
 
-        self.create_widgets()
+        self.live_updates_var = tk.BooleanVar(value=True)
 
+        self.create_widgets()
         self.find_hamlib_path() # Find hamlib on startup
+        self.update_com_ports() # Populate COM ports on startup
         self.start_monitoring()
+
+    def update_com_ports(self):
+        if list_ports is None:
+            self.log("pyserial not installed, cannot list COM ports.")
+            return
+
+        self.log("Scanning for available COM ports...")
+        ports = [port.device for port in list_ports.comports()]
+        self.com_port_combo['values'] = ports
+        if ports:
+            # If current value is not in list, set it to the first available port
+            if self.com_port_var.get() not in ports:
+                self.com_port_var.set(ports[0])
+            self.log(f"Found ports: {', '.join(ports)}")
+        else:
+            self.log("No COM ports found.")
 
     def find_hamlib_path(self):
         path = self.hamlib_path_var.get()
@@ -190,7 +203,6 @@ class RotorControlGUI(tk.Tk):
                 messagebox.showerror("Invalid Directory", f"The selected directory is not a valid Hamlib 'bin' directory. 'rotctld.exe' not found in {path}")
                 self.start_server_button.config(state="disabled")
 
-
     def load_config(self):
         if os.path.exists(self.config_file):
             with open(self.config_file, 'r') as f:
@@ -215,7 +227,6 @@ class RotorControlGUI(tk.Tk):
             json.dump(self.config, f, indent=4)
 
     def create_widgets(self):
-
         # Main layout frames
         main_frame = ttk.Frame(self)
         main_frame.pack(padx=10, pady=10, fill="both", expand=True)
@@ -230,7 +241,6 @@ class RotorControlGUI(tk.Tk):
 
         # Frame for rotctld settings
         settings_frame = ttk.LabelFrame(left_frame, text="rotctld Settings")
-
         settings_frame.pack(padx=10, pady=10, fill="x")
 
         self.hamlib_path_var = tk.StringVar(value=self.config.get("hamlib_path"))
@@ -241,7 +251,6 @@ class RotorControlGUI(tk.Tk):
         self.port_var = tk.StringVar(value=self.config.get("port"))
 
         ttk.Label(settings_frame, text="Hamlib Path:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-
         path_frame = ttk.Frame(settings_frame)
         path_frame.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
         ttk.Entry(path_frame, textvariable=self.hamlib_path_var, width=35).pack(side="left", fill="x", expand=True)
@@ -261,7 +270,6 @@ class RotorControlGUI(tk.Tk):
         # ... (rest of controls)
         self.current_position_var = tk.StringVar(value="Current Position: N/A")
         ttk.Label(control_frame, textvariable=self.current_position_var).grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="w")
-
 
         # Frame for manual commands
         manual_cmd_frame = ttk.LabelFrame(left_frame, text="Manual Command")
@@ -290,7 +298,6 @@ class RotorControlGUI(tk.Tk):
         visuals_frame = ttk.LabelFrame(right_frame, text="Visual Display")
         visuals_frame.pack(padx=10, pady=10, fill="both", expand=True)
 
-
         ttk.Label(visuals_frame, text="Azimuth", font=("Arial", 14)).pack(pady=(5,0))
         self.compass = Compass(visuals_frame, size=300)
         self.compass.pack(pady=5, expand=True)
@@ -299,12 +306,16 @@ class RotorControlGUI(tk.Tk):
         self.elevation_indicator = ElevationIndicator(visuals_frame, size=250)
         self.elevation_indicator.pack(pady=5, expand=True)
 
-
         # Re-populating all the widgets that were summarized for brevity
 
         # Settings Frame
         ttk.Label(settings_frame, text="COM Port:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
-        ttk.Entry(settings_frame, textvariable=self.com_port_var).grid(row=2, column=1, padx=5, pady=5, sticky="w")
+        com_frame = ttk.Frame(settings_frame)
+        com_frame.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+        self.com_port_combo = ttk.Combobox(com_frame, textvariable=self.com_port_var, width=10)
+        self.com_port_combo.pack(side="left", fill="x", expand=True)
+        ttk.Button(com_frame, text="Refresh", command=self.update_com_ports, width=8).pack(side="left", padx=(5,0))
+
         ttk.Label(settings_frame, text="Baud Rate:").grid(row=3, column=0, padx=5, pady=5, sticky="w")
         ttk.Entry(settings_frame, textvariable=self.baud_rate_var).grid(row=3, column=1, padx=5, pady=5, sticky="w")
         ttk.Label(settings_frame, text="Host:").grid(row=4, column=0, padx=5, pady=5, sticky="w")
@@ -328,6 +339,8 @@ class RotorControlGUI(tk.Tk):
         self.get_position_button = ttk.Button(control_frame, text="Get Position", command=self.get_position, state="disabled")
         self.get_position_button.grid(row=2, column=1, padx=5, pady=10, sticky="w")
 
+        live_updates_check = ttk.Checkbutton(control_frame, text="Live GUI Updates", variable=self.live_updates_var)
+        live_updates_check.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
     def log(self, message):
         self.log_area.insert(tk.END, message + "\n")
@@ -394,10 +407,8 @@ class RotorControlGUI(tk.Tk):
         self.server_status_var.set("Server Status: Stopped")
         self.rotor_conn_status_var.set("Rotor Connection: Disconnected")
         self.current_position_var.set("Current Position: N/A")
-
         if hasattr(self, 'compass'): self.compass.update_azimuth(0)
         if hasattr(self, 'elevation_indicator'): self.elevation_indicator.update_elevation(0)
-
         self.rotor_connected = False
         self.start_server_button.config(state="normal")
         self.stop_server_button.config(state="disabled")
@@ -543,9 +554,11 @@ class RotorControlGUI(tk.Tk):
         is_server_running = self.rotctld_process and self.rotctld_process.poll() is None
 
         if is_server_running:
-            if not self.rotor_connected and self.auto_reconnect_var.get():
-                self.rotor_conn_status_var.set("Rotor Connection: Attempting to connect...")
-            self.check_rotor_connection()
+            # Only perform the check if live updates are enabled
+            if self.live_updates_var.get():
+                if not self.rotor_connected and self.auto_reconnect_var.get():
+                    self.rotor_conn_status_var.set("Rotor Connection: Attempting to connect...")
+                self.check_rotor_connection()
         else:
             self.rotor_connected = False
             self.rotor_conn_status_var.set("Rotor Connection: Disconnected")
