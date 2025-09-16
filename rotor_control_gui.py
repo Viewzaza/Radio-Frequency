@@ -1,3 +1,6 @@
+#Radio_Frequency by view(BTW CHAT MADE THIS IN 5MIN)
+
+
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, filedialog
 import subprocess
