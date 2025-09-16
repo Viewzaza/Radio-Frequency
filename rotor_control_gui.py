@@ -1,4 +1,3 @@
-#what
 
 
 import tkinter as tk
