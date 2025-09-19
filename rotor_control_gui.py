@@ -208,10 +208,14 @@ class RotorControlGUI(tk.Tk):
         if os.path.exists(self.config_file):
             try:
                 with open(self.config_file, 'r') as f:
-                    return json.load(f)
+                    # Return if file is not empty
+                    content = f.read()
+                    if content:
+                        return json.loads(content)
             except (json.JSONDecodeError, FileNotFoundError):
-                # If file is corrupt, empty, or other error, log it and load defaults.
-                self.log(f"Warning: Could not decode {self.config_file}. Loading default settings.")
+                # If file is corrupt or other error, fall through to return defaults.
+                # Do not log here, as the logger may not be initialized yet.
+                pass
 
         return {
             "hamlib_path": "C:\\Program Files\\hamlib-w64-4.6.3\\bin",
