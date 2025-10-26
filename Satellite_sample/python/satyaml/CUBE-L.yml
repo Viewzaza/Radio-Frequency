@@ -1,0 +1,17 @@
+name: CUBE-L
+norad: 47448
+alternative_names:
+  - PIXL-1
+  - OSIRIS4CubeSat
+data:
+    &tlm Telemetry:
+        telemetry: csp
+transmitters:
+  9k6 FSK downlink:
+    frequency: 400.575e+6
+    modulation: FSK
+    baudrate: 9600
+    deviation: 3200
+    framing: AX100 ASM+Golay
+    data:
+    - *tlm

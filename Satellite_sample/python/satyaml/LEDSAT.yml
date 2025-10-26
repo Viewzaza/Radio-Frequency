@@ -1,0 +1,21 @@
+name: LEDSAT
+norad: 49069
+data:
+  &tlm Telemetry:
+    telemetry: csp
+transmitters:
+  1k2 FSK downlink:
+    frequency: 435.190e+6
+    modulation: FSK
+    baudrate: 1200
+    framing: AX100 ASM+Golay
+    data:
+    - *tlm
+  9k6 FSK downlink:
+    frequency: 435.190e+6
+    modulation: FSK
+    baudrate: 9600
+    deviation: 3200
+    framing: AX100 ASM+Golay
+    data:
+    - *tlm

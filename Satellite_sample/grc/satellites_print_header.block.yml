@@ -1,0 +1,13 @@
+id: satellites_print_header
+label: Print CSP Header (Deprecated)
+category: '[Satellites]/Deprecated'
+
+inputs:
+-   domain: message
+    id: in
+
+templates:
+    imports: import satellites
+    make: satellites.print_header()
+
+file_format: 1

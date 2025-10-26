@@ -1,0 +1,2 @@
+Sphinx>=8,<9
+sphinx_rtd_theme>=3,<4

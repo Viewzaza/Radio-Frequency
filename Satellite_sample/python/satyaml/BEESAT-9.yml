@@ -1,0 +1,15 @@
+name: BEESAT-9
+norad: 44412
+data:
+  &tlm Telemetry:
+    unknown
+transmitters:
+  4k8 FSK downlink:
+    frequency: 435.950e+6
+    modulation: FSK
+    baudrate: 4800
+    deviation: 1800
+    framing: BEESAT-9
+    callsign: DP0BEM
+    data:
+    - *tlm
