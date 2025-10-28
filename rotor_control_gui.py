@@ -14,6 +14,7 @@ import time
 import json
 import os
 import math
+import queue
 
 class Compass(tk.Canvas):
     """A tkinter canvas widget that displays a compass face and a pointer for azimuth."""
@@ -148,10 +149,13 @@ class RotorControlGUI(tk.Tk):
         self.auto_reconnect_var = tk.BooleanVar(value=True)
         self.live_updates_var = tk.BooleanVar(value=True)
 
+        self.log_queue = queue.Queue()
+
         self.create_widgets()
         self.find_hamlib_path() # Find hamlib on startup
         self.update_com_ports() # Populate COM ports on startup
         self.start_monitoring()
+        self.process_log_queue()
 
     def update_com_ports(self):
         if list_ports is None:
@@ -345,8 +349,17 @@ class RotorControlGUI(tk.Tk):
         ttk.Checkbutton(control_frame, text="Live GUI Updates", variable=self.live_updates_var).grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
     def log(self, message):
-        self.log_area.insert(tk.END, message + "\n")
-        self.log_area.see(tk.END)
+        self.log_queue.put(message)
+
+    def process_log_queue(self):
+        try:
+            while not self.log_queue.empty():
+                message = self.log_queue.get_nowait()
+                self.log_area.insert(tk.END, message + "\n")
+                self.log_area.see(tk.END)
+        except queue.Empty:
+            pass
+        self.after(100, self.process_log_queue)
 
     def start_rotctld(self, from_user=True):
         if from_user:
@@ -380,6 +393,10 @@ class RotorControlGUI(tk.Tk):
 
             threading.Thread(target=self.read_process_output, args=(self.rotctld_process.stdout,), daemon=True).start()
             threading.Thread(target=self.read_process_output, args=(self.rotctld_process.stderr,), daemon=True).start()
+
+            # Attempt to connect to the rotor right away
+            self.after(1000, self.check_rotor_connection)
+
             return True
         except Exception as e:
             messagebox.showerror("Error", f"Failed to start rotctld: {e}")
@@ -521,8 +538,8 @@ class RotorControlGUI(tk.Tk):
                 el_float = float(el)
                 self.compass.update_azimuth(az_float)
                 self.elevation_indicator.update_elevation(el_float)
-            except (ValueError, TypeError):
-                pass # Ignore if values are not valid floats
+            except (ValueError, TypeError) as e:
+                self.log(f"Could not parse position data '{az}', '{el}': {e}")
 
             return True
 
