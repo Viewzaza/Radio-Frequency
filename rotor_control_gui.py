@@ -15,6 +15,8 @@ import json
 import os
 import math
 import queue
+from PIL import Image, ImageDraw
+import pystray
 
 class Compass(tk.Canvas):
     """A tkinter canvas widget that displays a compass face and a pointer for azimuth."""
@@ -468,8 +470,15 @@ class RotorControlGUI(tk.Tk):
         elevation = self.elevation_var.get()
 
         self.log(f"Setting position to Azimuth={azimuth}, Elevation={elevation}")
-        stdout, stderr = self.run_rotctl_command(["P", azimuth, elevation])
+        threading.Thread(target=self._set_position_thread, args=(azimuth, elevation), daemon=True).start()
 
+    def _set_position_thread(self, azimuth, elevation):
+        """Runs the rotctl set position command in a background thread."""
+        stdout, stderr = self.run_rotctl_command(["P", azimuth, elevation])
+        self.after(0, self._process_set_position_result, stdout, stderr)
+
+    def _process_set_position_result(self, stdout, stderr):
+        """Handles the result of the set position command in the main GUI thread."""
         if stderr:
             self.log(f"Error setting position: {stderr}")
             messagebox.showerror("Error", f"Failed to set position: {stderr}")
@@ -477,7 +486,6 @@ class RotorControlGUI(tk.Tk):
             self.rotor_conn_status_var.set("Rotor Connection: Error")
         else:
             self.log(f"Position set command sent successfully.")
-            # Optimistically update position, monitor loop will verify
             self.after(1000, self.check_rotor_connection)
 
     def get_position(self):
@@ -499,30 +507,39 @@ class RotorControlGUI(tk.Tk):
 
         command_args = command_str.split()
         self.log(f"MANUAL CMD: {command_str}")
+        threading.Thread(target=self._send_manual_command_thread, args=(command_args,), daemon=True).start()
+        self.manual_cmd_var.set("")  # Clear the entry
 
+    def _send_manual_command_thread(self, command_args):
+        """Runs a manual rotctl command in a background thread."""
         stdout, stderr = self.run_rotctl_command(command_args)
+        self.after(0, self._process_manual_command_result, stdout, stderr)
 
+    def _process_manual_command_result(self, stdout, stderr):
+        """Handles the result of a manual command in the main GUI thread."""
         if stdout:
             self.log(f"OUTPUT: {stdout}")
         if stderr:
             self.log(f"ERROR: {stderr}")
-
-        # After sending a command, it's good practice to check the position again
-        # to update the state and visuals.
         self.after(500, self.check_rotor_connection)
-        self.manual_cmd_var.set("") # Clear the entry
 
     def check_rotor_connection(self):
-        # This is the core connection check function
-        stdout, stderr = self.run_rotctl_command(["p"])
+        """Starts the rotor connection check in a background thread."""
+        threading.Thread(target=self._check_rotor_connection_thread, daemon=True).start()
 
+    def _check_rotor_connection_thread(self):
+        """Runs the rotctl get position command in a background thread."""
+        stdout, stderr = self.run_rotctl_command(["p"])
+        self.after(0, self._process_check_rotor_connection_result, stdout, stderr)
+
+    def _process_check_rotor_connection_result(self, stdout, stderr):
+        """Handles the result of the connection check in the main GUI thread."""
         if stderr:
             if self.rotor_connected:
                 self.log("Rotor connection lost.")
             self.rotor_connected = False
             self.rotor_conn_status_var.set("Rotor Connection: Disconnected / Error")
             self.current_position_var.set("Current Position: N/A")
-            return False
         else:
             if not self.rotor_connected:
                 self.log("Rotor connection established.")
@@ -540,8 +557,6 @@ class RotorControlGUI(tk.Tk):
                 self.elevation_indicator.update_elevation(el_float)
             except (ValueError, TypeError) as e:
                 self.log(f"Could not parse position data '{az}', '{el}': {e}")
-
-            return True
 
     def start_monitoring(self):
         self.monitor_server_process()
@@ -585,22 +600,55 @@ class RotorControlGUI(tk.Tk):
         self.after_id_rotor_monitor = self.after(5000, self.monitor_rotor_connection)
 
     def on_closing(self):
+        # Instead of closing, hide the window to the system tray
+        self.hide_window()
+
+    def setup_tray_icon(self):
+        """Creates and configures the system tray icon."""
+        # Create a simple icon image
+        width = 64
+        height = 64
+        color1 = "black"
+        color2 = "white"
+        image = Image.new('RGB', (width, height), color1)
+        dc = ImageDraw.Draw(image)
+        dc.rectangle(
+            (width // 2, 0, width, height // 2),
+            fill=color2)
+        dc.rectangle(
+            (0, height // 2, width // 2, height),
+            fill=color2)
+
+        menu = (pystray.MenuItem('Show', self.show_window, default=True),
+                pystray.MenuItem('Quit', self.quit_window))
+        self.tray_icon = pystray.Icon("rotor_control", image, "Rotor Control", menu)
+        threading.Thread(target=self.tray_icon.run, daemon=True).start()
+
+    def hide_window(self):
+        """Hides the main window."""
+        self.withdraw()
+
+    def show_window(self, icon, item):
+        """Shows the main window."""
+        self.deiconify()
+
+    def quit_window(self, icon, item):
+        """Stops the tray icon and closes the application."""
+        self.tray_icon.stop()
+
         self.save_config()
         # Cancel monitoring loops to prevent errors on exit
         if self.after_id_server_monitor: self.after_cancel(self.after_id_server_monitor)
         if self.after_id_rotor_monitor: self.after_cancel(self.after_id_rotor_monitor)
 
         if self.rotctld_process and self.rotctld_process.poll() is None:
-            if messagebox.askokcancel("Quit", "The rotctld server is running. Do you want to stop it and quit?"):
-                self.stop_rotctld()
-                self.destroy()
-            else:
-                # If they cancel, restart monitoring
-                self.start_monitoring()
-        else:
-            self.destroy()
+            self.stop_rotctld()
+
+        self.destroy()
+
 
 if __name__ == "__main__":
     app = RotorControlGUI()
     app.protocol("WM_DELETE_WINDOW", app.on_closing)
+    app.setup_tray_icon()
     app.mainloop()
