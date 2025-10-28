@@ -545,9 +545,14 @@ class RotorControlGUI(tk.Tk):
                 self.log("Rotor connection established.")
             self.rotor_connected = True
             self.rotor_conn_status_var.set("Rotor Connection: Connected")
-            lines = stdout.split('\n')
-            az = lines[0] if lines else "0.0"
-            el = lines[1] if len(lines) > 1 else "0.0"
+
+            # Ensure stdout is not None before processing
+            if stdout:
+                lines = stdout.split('\n')
+                az = lines[0] if lines else "0.0"
+                el = lines[1] if len(lines) > 1 else "0.0"
+            else:
+                az, el = "0.0", "0.0"
             self.current_position_var.set(f"Current Position: Azimuth={az}, Elevation={el}")
 
             try:
