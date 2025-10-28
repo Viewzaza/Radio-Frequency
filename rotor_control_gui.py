@@ -470,15 +470,8 @@ class RotorControlGUI(tk.Tk):
         elevation = self.elevation_var.get()
 
         self.log(f"Setting position to Azimuth={azimuth}, Elevation={elevation}")
-        threading.Thread(target=self._set_position_thread, args=(azimuth, elevation), daemon=True).start()
-
-    def _set_position_thread(self, azimuth, elevation):
-        """Runs the rotctl set position command in a background thread."""
         stdout, stderr = self.run_rotctl_command(["P", azimuth, elevation])
-        self.after(0, self._process_set_position_result, stdout, stderr)
 
-    def _process_set_position_result(self, stdout, stderr):
-        """Handles the result of the set position command in the main GUI thread."""
         if stderr:
             self.log(f"Error setting position: {stderr}")
             messagebox.showerror("Error", f"Failed to set position: {stderr}")
@@ -486,6 +479,7 @@ class RotorControlGUI(tk.Tk):
             self.rotor_conn_status_var.set("Rotor Connection: Error")
         else:
             self.log(f"Position set command sent successfully.")
+            # Optimistically update position, monitor loop will verify
             self.after(1000, self.check_rotor_connection)
 
     def get_position(self):
@@ -507,52 +501,38 @@ class RotorControlGUI(tk.Tk):
 
         command_args = command_str.split()
         self.log(f"MANUAL CMD: {command_str}")
-        threading.Thread(target=self._send_manual_command_thread, args=(command_args,), daemon=True).start()
-        self.manual_cmd_var.set("")  # Clear the entry
 
-    def _send_manual_command_thread(self, command_args):
-        """Runs a manual rotctl command in a background thread."""
         stdout, stderr = self.run_rotctl_command(command_args)
-        self.after(0, self._process_manual_command_result, stdout, stderr)
 
-    def _process_manual_command_result(self, stdout, stderr):
-        """Handles the result of a manual command in the main GUI thread."""
         if stdout:
             self.log(f"OUTPUT: {stdout}")
         if stderr:
             self.log(f"ERROR: {stderr}")
+
+        # After sending a command, it's good practice to check the position again
+        # to update the state and visuals.
         self.after(500, self.check_rotor_connection)
+        self.manual_cmd_var.set("") # Clear the entry
 
     def check_rotor_connection(self):
-        """Starts the rotor connection check in a background thread."""
-        threading.Thread(target=self._check_rotor_connection_thread, daemon=True).start()
-
-    def _check_rotor_connection_thread(self):
-        """Runs the rotctl get position command in a background thread."""
+        # This is the core connection check function
         stdout, stderr = self.run_rotctl_command(["p"])
-        self.after(0, self._process_check_rotor_connection_result, stdout, stderr)
 
-    def _process_check_rotor_connection_result(self, stdout, stderr):
-        """Handles the result of the connection check in the main GUI thread."""
         if stderr:
             if self.rotor_connected:
                 self.log("Rotor connection lost.")
             self.rotor_connected = False
             self.rotor_conn_status_var.set("Rotor Connection: Disconnected / Error")
             self.current_position_var.set("Current Position: N/A")
+            return False
         else:
             if not self.rotor_connected:
                 self.log("Rotor connection established.")
             self.rotor_connected = True
             self.rotor_conn_status_var.set("Rotor Connection: Connected")
-
-            # Ensure stdout is not None before processing
-            if stdout:
-                lines = stdout.split('\n')
-                az = lines[0] if lines else "0.0"
-                el = lines[1] if len(lines) > 1 else "0.0"
-            else:
-                az, el = "0.0", "0.0"
+            lines = stdout.split('\n')
+            az = lines[0] if lines else "0.0"
+            el = lines[1] if len(lines) > 1 else "0.0"
             self.current_position_var.set(f"Current Position: Azimuth={az}, Elevation={el}")
 
             try:
@@ -562,6 +542,8 @@ class RotorControlGUI(tk.Tk):
                 self.elevation_indicator.update_elevation(el_float)
             except (ValueError, TypeError) as e:
                 self.log(f"Could not parse position data '{az}', '{el}': {e}")
+
+            return True
 
     def start_monitoring(self):
         self.monitor_server_process()
