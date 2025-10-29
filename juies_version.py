@@ -15,6 +15,7 @@ import json
 import os
 import math
 import queue
+import sys
 
 class Compass(tk.Canvas):
     """A tkinter canvas widget that displays a compass face and a pointer for azimuth."""
@@ -408,16 +409,27 @@ class RotorControlGUI(tk.Tk):
             self.log(line.strip())
         pipe.close()
 
-    def stop_rotctld(self, from_user=True):
+    def stop_rotctld(self, from_user: bool = True):
         if from_user:
             self.server_running_manually = False
 
         if self.rotctld_process and self.rotctld_process.poll() is None:
             self.log("Stopping server...")
-            # Use taskkill on Windows to forcefully terminate the process tree
-            subprocess.run(["taskkill", "/F", "/T", "/PID", str(self.rotctld_process.pid)],
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            self.rotctld_process.wait() # Wait for the process to be fully terminated
+            if sys.platform == "win32":
+                # Forcefully terminate the process and any subprocesses on Windows
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(self.rotctld_process.pid)],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW
+                )
+            else:
+                # On other platforms, terminate gracefully first, then kill
+                self.rotctld_process.terminate()
+                try:
+                    self.rotctld_process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.log("Server did not terminate gracefully, killing.")
+                    self.rotctld_process.kill()
+            self.rotctld_process.wait()
             self.rotctld_process = None
             self.log("Server stopped.")
 
@@ -589,19 +601,18 @@ class RotorControlGUI(tk.Tk):
 
     def on_closing(self):
         self.save_config()
-        # Cancel monitoring loops to prevent errors on exit
-        if self.after_id_server_monitor: self.after_cancel(self.after_id_server_monitor)
-        if self.after_id_rotor_monitor: self.after_cancel(self.after_id_rotor_monitor)
+        # Cancel all scheduled 'after' jobs to prevent errors on exit
+        if self.after_id_server_monitor:
+            self.after_cancel(self.after_id_server_monitor)
+        if self.after_id_rotor_monitor:
+            self.after_cancel(self.after_id_rotor_monitor)
 
+        # Stop the server if it's running, then destroy the window
         if self.rotctld_process and self.rotctld_process.poll() is None:
-            if messagebox.askokcancel("Quit", "The rotctld server is running. Do you want to stop it and quit?"):
-                self.stop_rotctld()
-                self.destroy()
-            else:
-                # If they cancel, restart monitoring
-                self.start_monitoring()
-        else:
-            self.destroy()
+            self.log("Closing application and stopping server...")
+            self.stop_rotctld(from_user=False)
+
+        self.destroy()
 
 
 if __name__ == "__main__":
