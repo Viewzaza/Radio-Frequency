@@ -15,8 +15,6 @@ import json
 import os
 import math
 import queue
-from PIL import Image, ImageDraw
-import pystray
 
 class Compass(tk.Canvas):
     """A tkinter canvas widget that displays a compass face and a pointer for azimuth."""
@@ -414,14 +412,12 @@ class RotorControlGUI(tk.Tk):
         if from_user:
             self.server_running_manually = False
 
-        if self.rotctld_process:
+        if self.rotctld_process and self.rotctld_process.poll() is None:
             self.log("Stopping server...")
-            self.rotctld_process.terminate()
-            try:
-                self.rotctld_process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.log("Server did not terminate, killing it.")
-                self.rotctld_process.kill()
+            # Use taskkill on Windows to forcefully terminate the process tree
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(self.rotctld_process.pid)],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.rotctld_process.wait() # Wait for the process to be fully terminated
             self.rotctld_process = None
             self.log("Server stopped.")
 
@@ -530,9 +526,14 @@ class RotorControlGUI(tk.Tk):
                 self.log("Rotor connection established.")
             self.rotor_connected = True
             self.rotor_conn_status_var.set("Rotor Connection: Connected")
-            lines = stdout.split('\n')
-            az = lines[0] if lines else "0.0"
-            el = lines[1] if len(lines) > 1 else "0.0"
+
+            # Ensure stdout is not None before processing
+            if stdout:
+                lines = stdout.split('\n')
+                az = lines[0] if lines else "0.0"
+                el = lines[1] if len(lines) > 1 else "0.0"
+            else:
+                az, el = "0.0", "0.0"
             self.current_position_var.set(f"Current Position: Azimuth={az}, Elevation={el}")
 
             try:
@@ -587,55 +588,23 @@ class RotorControlGUI(tk.Tk):
         self.after_id_rotor_monitor = self.after(5000, self.monitor_rotor_connection)
 
     def on_closing(self):
-        # Instead of closing, hide the window to the system tray
-        self.hide_window()
-
-    def setup_tray_icon(self):
-        """Creates and configures the system tray icon."""
-        # Create a simple icon image
-        width = 64
-        height = 64
-        color1 = "black"
-        color2 = "white"
-        image = Image.new('RGB', (width, height), color1)
-        dc = ImageDraw.Draw(image)
-        dc.rectangle(
-            (width // 2, 0, width, height // 2),
-            fill=color2)
-        dc.rectangle(
-            (0, height // 2, width // 2, height),
-            fill=color2)
-
-        menu = (pystray.MenuItem('Show', self.show_window, default=True),
-                pystray.MenuItem('Quit', self.quit_window))
-        self.tray_icon = pystray.Icon("rotor_control", image, "Rotor Control", menu)
-        threading.Thread(target=self.tray_icon.run, daemon=True).start()
-
-    def hide_window(self):
-        """Hides the main window."""
-        self.withdraw()
-
-    def show_window(self, icon, item):
-        """Shows the main window."""
-        self.deiconify()
-
-    def quit_window(self, icon, item):
-        """Stops the tray icon and closes the application."""
-        self.tray_icon.stop()
-
         self.save_config()
         # Cancel monitoring loops to prevent errors on exit
         if self.after_id_server_monitor: self.after_cancel(self.after_id_server_monitor)
         if self.after_id_rotor_monitor: self.after_cancel(self.after_id_rotor_monitor)
 
         if self.rotctld_process and self.rotctld_process.poll() is None:
-            self.stop_rotctld()
-
-        self.destroy()
+            if messagebox.askokcancel("Quit", "The rotctld server is running. Do you want to stop it and quit?"):
+                self.stop_rotctld()
+                self.destroy()
+            else:
+                # If they cancel, restart monitoring
+                self.start_monitoring()
+        else:
+            self.destroy()
 
 
 if __name__ == "__main__":
     app = RotorControlGUI()
     app.protocol("WM_DELETE_WINDOW", app.on_closing)
-    app.setup_tray_icon()
     app.mainloop()
