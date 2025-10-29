@@ -147,16 +147,20 @@ class RotorControlGUI(tk.Tk):
         self.after_id_server_monitor = None
         self.after_id_rotor_monitor = None
 
+        self.is_checking_connection = False
+
         self.auto_reconnect_var = tk.BooleanVar(value=True)
         self.live_updates_var = tk.BooleanVar(value=True)
 
         self.log_queue = queue.Queue()
+        self.result_queue = queue.Queue()
 
         self.create_widgets()
         self.find_hamlib_path() # Find hamlib on startup
         self.update_com_ports() # Populate COM ports on startup
         self.start_monitoring()
         self.process_log_queue()
+        self.process_result_queue()
 
     def update_com_ports(self):
         if list_ports is None:
@@ -362,6 +366,40 @@ class RotorControlGUI(tk.Tk):
             pass
         self.after(100, self.process_log_queue)
 
+    def process_result_queue(self):
+        try:
+            while not self.result_queue.empty():
+                result = self.result_queue.get_nowait()
+
+                is_connected = result.get("connected", False)
+                if is_connected:
+                    if not self.rotor_connected:
+                        self.log("Rotor connection established.")
+                    self.rotor_connected = True
+                    self.rotor_conn_status_var.set("Rotor Connection: Connected")
+                else:
+                    if self.rotor_connected:
+                        self.log("Rotor connection lost.")
+                    self.rotor_connected = False
+                    self.rotor_conn_status_var.set("Rotor Connection: Disconnected / Error")
+                    self.current_position_var.set("Current Position: N/A")
+
+                if "az" in result and "el" in result:
+                    az = result["az"]
+                    el = result["el"]
+                    self.current_position_var.set(f"Current Position: Azimuth={az}, Elevation={el}")
+                    try:
+                        az_float = float(az)
+                        el_float = float(el)
+                        self.compass.update_azimuth(az_float)
+                        self.elevation_indicator.update_elevation(el_float)
+                    except (ValueError, TypeError) as e:
+                        self.log(f"Could not parse position data '{az}', '{el}': {e}")
+
+        except queue.Empty:
+            pass
+        self.after(100, self.process_result_queue)
+
     def start_rotctld(self, from_user=True):
         if from_user:
             self.server_running_manually = True
@@ -523,40 +561,22 @@ class RotorControlGUI(tk.Tk):
         self.manual_cmd_var.set("") # Clear the entry
 
     def check_rotor_connection(self):
-        # This is the core connection check function
+        # This function runs in a background thread.
+        # It should not directly update the GUI.
         stdout, stderr = self.run_rotctl_command(["p"])
 
-        if stderr:
-            if self.rotor_connected:
-                self.log("Rotor connection lost.")
-            self.rotor_connected = False
-            self.rotor_conn_status_var.set("Rotor Connection: Disconnected / Error")
-            self.current_position_var.set("Current Position: N/A")
-            return False
-        else:
-            if not self.rotor_connected:
-                self.log("Rotor connection established.")
-            self.rotor_connected = True
-            self.rotor_conn_status_var.set("Rotor Connection: Connected")
-
-            # Ensure stdout is not None before processing
+        result = {"connected": False}
+        if not stderr:
+            result["connected"] = True
             if stdout:
                 lines = stdout.split('\n')
-                az = lines[0] if lines else "0.0"
-                el = lines[1] if len(lines) > 1 else "0.0"
+                result["az"] = lines[0] if lines else "0.0"
+                result["el"] = lines[1] if len(lines) > 1 else "0.0"
             else:
-                az, el = "0.0", "0.0"
-            self.current_position_var.set(f"Current Position: Azimuth={az}, Elevation={el}")
+                result["az"], result["el"] = "0.0", "0.0"
 
-            try:
-                az_float = float(az)
-                el_float = float(el)
-                self.compass.update_azimuth(az_float)
-                self.elevation_indicator.update_elevation(el_float)
-            except (ValueError, TypeError) as e:
-                self.log(f"Could not parse position data '{az}', '{el}': {e}")
-
-            return True
+        self.result_queue.put(result)
+        self.is_checking_connection = False
 
     def start_monitoring(self):
         self.monitor_server_process()
@@ -587,12 +607,14 @@ class RotorControlGUI(tk.Tk):
 
         is_server_running = self.rotctld_process and self.rotctld_process.poll() is None
 
-        if is_server_running:
-            if self.live_updates_var.get():
-                if not self.rotor_connected and self.auto_reconnect_var.get():
-                    self.rotor_conn_status_var.set("Rotor Connection: Attempting to connect...")
-                self.check_rotor_connection()
-        else:
+        if is_server_running and self.live_updates_var.get() and not self.is_checking_connection:
+            if not self.rotor_connected and self.auto_reconnect_var.get():
+                self.rotor_conn_status_var.set("Rotor Connection: Attempting to connect...")
+
+            self.is_checking_connection = True
+            threading.Thread(target=self.check_rotor_connection, daemon=True).start()
+
+        elif not is_server_running and self.rotor_connected:
             self.rotor_connected = False
             self.rotor_conn_status_var.set("Rotor Connection: Disconnected")
             self.current_position_var.set("Current Position: N/A")
