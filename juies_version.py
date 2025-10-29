@@ -514,27 +514,37 @@ class RotorControlGUI(tk.Tk):
 
         azimuth = self.azimuth_var.get()
         elevation = self.elevation_var.get()
+        self.log(f"Queueing set position to Azimuth={azimuth}, Elevation={elevation}")
 
-        self.log(f"Setting position to Azimuth={azimuth}, Elevation={elevation}")
+        # Run the blocking rotctl command in a background thread to not freeze the GUI
+        threading.Thread(target=self._threaded_set_position, args=(azimuth, elevation), daemon=True).start()
+
+    def _threaded_set_position(self, azimuth, elevation):
+        """Helper function to run the set position command in a thread."""
         stdout, stderr = self.run_rotctl_command(["P", azimuth, elevation])
-
         if stderr:
             self.log(f"Error setting position: {stderr}")
-            messagebox.showerror("Error", f"Failed to set position: {stderr}")
-            self.rotor_connected = False
-            self.rotor_conn_status_var.set("Rotor Connection: Error")
         else:
             self.log(f"Position set command sent successfully.")
-            # Optimistically update position, monitor loop will verify
-            self.after(1000, self.check_rotor_connection)
+
+        # After the command, trigger a non-blocking check to update the GUI
+        if not self.is_checking_connection:
+            self.is_checking_connection = True
+            threading.Thread(target=self.check_rotor_connection, daemon=True).start()
 
     def get_position(self):
         # This is now just a user-facing action
         if not self.server_running_manually:
             messagebox.showwarning("Warning", "Server is not running.")
             return
+
+        if self.is_checking_connection:
+            self.log("Manual position check requested, but a check is already in progress.")
+            return
+
         self.log("Manual position check requested.")
-        self.check_rotor_connection()
+        self.is_checking_connection = True
+        threading.Thread(target=self.check_rotor_connection, daemon=True).start()
 
     def send_manual_command(self, event=None):
         if not self.rotor_connected:
@@ -545,9 +555,15 @@ class RotorControlGUI(tk.Tk):
         if not command_str:
             return
 
-        command_args = command_str.split()
-        self.log(f"MANUAL CMD: {command_str}")
+        self.log(f"Queueing MANUAL CMD: {command_str}")
 
+        # Run the command in a thread
+        threading.Thread(target=self._threaded_send_manual_command, args=(command_str,), daemon=True).start()
+
+        self.manual_cmd_var.set("") # Clear the entry
+
+    def _threaded_send_manual_command(self, command_str):
+        command_args = command_str.split()
         stdout, stderr = self.run_rotctl_command(command_args)
 
         if stdout:
@@ -555,10 +571,10 @@ class RotorControlGUI(tk.Tk):
         if stderr:
             self.log(f"ERROR: {stderr}")
 
-        # After sending a command, it's good practice to check the position again
-        # to update the state and visuals.
-        self.after(500, self.check_rotor_connection)
-        self.manual_cmd_var.set("") # Clear the entry
+        # After the command, trigger a non-blocking check to update the GUI
+        if not self.is_checking_connection:
+            self.is_checking_connection = True
+            threading.Thread(target=self.check_rotor_connection, daemon=True).start()
 
     def check_rotor_connection(self):
         # This function runs in a background thread.
